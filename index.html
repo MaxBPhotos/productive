@@ -1,18 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
+<meta charset="UTF-8">
 <title>Focusifyr</title>
-
-<!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// ---------------- FIREBASE ----------------
+// ---------------- Firebase ----------------
 const firebaseConfig = {
   apiKey: "AIzaSyByNjT5Uoe-eOAxyMCxNw10I3vyK2lgGkI",
   authDomain: "productivity-493dd.firebaseapp.com",
@@ -28,20 +25,20 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
-// ---------------- GLOBALS ----------------
+// ---------------- Globals ----------------
 let user = null;
 let currentWeek = 1;
 let weekData = null;
 let chartInstance = null;
 const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
-// ---------------- AUTH ----------------
+// ---------------- Auth ----------------
 window.googleLogin = async () => {
   try { await signInWithPopup(auth, provider); } 
   catch(e){ alert(e.message); }
 };
 
-onAuthStateChanged(auth, u=>{
+onAuthStateChanged(auth, u => {
   if(u){
     user = u;
     document.getElementById("auth").style.display="none";
@@ -51,20 +48,20 @@ onAuthStateChanged(auth, u=>{
   }
 });
 
-// ---------------- WEEK TABS ----------------
+// ---------------- Week Tabs ----------------
 function renderWeekTabs(){
   const container = document.getElementById("weeks");
-  container.innerHTML="";
+  container.innerHTML = "";
   for(let i=1;i<=4;i++){
-    const b = document.createElement("button");
-    b.textContent = "Week " + i;
-    if(i===currentWeek) b.classList.add("active");
-    b.onclick = () => { currentWeek=i; loadWeek(i); };
-    container.appendChild(b);
+    const btn = document.createElement("button");
+    btn.textContent = "Week "+i;
+    if(i===currentWeek) btn.classList.add("active");
+    btn.onclick = () => { currentWeek=i; loadWeek(i); };
+    container.appendChild(btn);
   }
 }
 
-// ---------------- DATA ----------------
+// ---------------- Data ----------------
 function createEmptyWeek(){
   return {
     days: Array.from({length:7},()=>({tasks:[false,false,false]})),
@@ -73,34 +70,32 @@ function createEmptyWeek(){
 }
 
 async function saveWeek(){
+  if(!weekData) return;
   await setDoc(doc(db,"users",user.uid,"weeks","week"+currentWeek), weekData);
 }
 
-// ---------------- LOAD WEEK ----------------
+// ---------------- Load Week ----------------
 async function loadWeek(week){
   renderWeekTabs();
   const ref = doc(db,"users",user.uid,"weeks","week"+week);
   const snap = await getDoc(ref);
-  weekData = snap.exists() ? snap.data() : createEmptyWeek();
+  weekData = snap.exists()? snap.data(): createEmptyWeek();
   renderDays();
   renderHabits();
   renderChart();
 }
 
-// ---------------- RENDER DAYS ----------------
+// ---------------- Render Days ----------------
 function renderDays(){
   const container = document.getElementById("days");
-  container.innerHTML = "";
+  container.innerHTML="";
   weekData.days.forEach((day,i)=>{
-    const done = day.tasks.filter(t=>t).length;
-    const pct = Math.round((done/day.tasks.length)*100);
-    const div = document.createElement("div");
+    let done = day.tasks.filter(t=>t).length;
+    let pct = Math.round((done/day.tasks.length)*100);
+    let div = document.createElement("div");
     div.className = "day";
-    div.innerHTML=`
-      <b>${days[i]}</b>
-      <div class="circle" style="background:conic-gradient(#4caf50 ${pct*3.6}deg,#eee 0deg)">
-        ${pct}%
-      </div>
+    div.innerHTML = `<b>${days[i]}</b>
+      <div class="circle" id="circle-${i}" style="background:conic-gradient(#4caf50 ${pct*3.6}deg,#eee 0deg)">${pct}%</div>
       ${day.tasks.map((t,j)=>`
         <div class="task">
           <input type="checkbox" data-day="${i}" data-task="${j}" ${t?"checked":""}>
@@ -111,25 +106,35 @@ function renderDays(){
     container.appendChild(div);
   });
 
-  // Attach events
+  // Attach change events without re-rendering DOM
   document.querySelectorAll('.task input').forEach(el=>{
     el.onchange = async e=>{
       const day = parseInt(el.dataset.day);
       const task = parseInt(el.dataset.task);
       weekData.days[day].tasks[task] = el.checked;
-      renderDays();
-      renderChart();
+      updateDayCircle(day);
+      updateChart();
       await saveWeek();
     };
   });
 }
 
-// ---------------- RENDER HABITS ----------------
+// ---------------- Update Circle ----------------
+function updateDayCircle(dayIndex){
+  const day = weekData.days[dayIndex];
+  const done = day.tasks.filter(t=>t).length;
+  const pct = Math.round((done/day.tasks.length)*100);
+  const circle = document.getElementById(`circle-${dayIndex}`);
+  circle.textContent = pct+"%";
+  circle.style.background = `conic-gradient(#4caf50 ${pct*3.6}deg,#eee 0deg)`;
+}
+
+// ---------------- Render Habits ----------------
 function renderHabits(){
   const table = document.getElementById("habits");
-  table.innerHTML = "<tr><th>Habit</th>"+days.map(d=>`<th>${d}</th>`).join("")+"</tr>";
+  table.innerHTML="<tr><th>Habit</th>"+days.map(d=>`<th>${d}</th>`).join("")+"</tr>";
   weekData.habits.forEach((row,i)=>{
-    let tr = "<tr><td>Habit "+(i+1)+"</td>";
+    let tr = `<tr><td>Habit ${i+1}</td>`;
     row.forEach((v,j)=>{
       tr += `<td><input type="checkbox" data-habit="${i}" data-day="${j}" ${v?"checked":""}></td>`;
     });
@@ -147,19 +152,31 @@ function renderHabits(){
   });
 }
 
-// ---------------- RENDER CHART ----------------
+// ---------------- Chart ----------------
 function renderChart(){
   const ctx = document.getElementById("chart");
-  const values = weekData.days.map(d=>Math.round((d.tasks.filter(t=>t).length/3)*100));
+  const values = weekData.days.map(d=>Math.round(d.tasks.filter(t=>t).length/3*100));
   if(chartInstance) chartInstance.destroy();
   chartInstance = new Chart(ctx,{
     type:'line',
     data:{
       labels:days,
-      datasets:[{label:'Daily Progress %', data:values, borderColor:'#4caf50', fill:false}]
+      datasets:[{
+        label:'Daily Progress %',
+        data:values,
+        borderColor:'#4caf50',
+        fill:false,
+        tension:0.3
+      }]
     },
     options:{responsive:true, maintainAspectRatio:false}
   });
+}
+
+function updateChart(){
+  const values = weekData.days.map(d=>Math.round(d.tasks.filter(t=>t).length/3*100));
+  chartInstance.data.datasets[0].data = values;
+  chartInstance.update();
 }
 </script>
 
@@ -178,15 +195,12 @@ input{padding:6px;border-radius:6px;border:1px solid #ccc}
 .habits td,.habits th{border:1px solid #ddd;padding:6px;text-align:center}
 canvas{width:100%;height:150px}
 </style>
-
 </head>
 <body>
 <div class="app">
 <h1>Focusifyr</h1>
 <div id="auth">
-  <button onclick="googleLogin()" style="padding:12px 20px;border-radius:8px;background:#4285F4;color:white;border:none;font-size:16px;cursor:pointer">
-    Sign in with Google
-  </button>
+  <button onclick="googleLogin()">Sign in with Google</button>
 </div>
 
 <div id="main" style="display:none">
