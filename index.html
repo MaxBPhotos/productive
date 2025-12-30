@@ -4,12 +4,15 @@
 <meta charset="UTF-8" />
 <title>Focusifyr</title>
 
-<!-- Firebase -->
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+// ---------------- FIREBASE ----------------
 const firebaseConfig = {
   apiKey: "AIzaSyByNjT5Uoe-eOAxyMCxNw10I3vyK2lgGkI",
   authDomain: "productivity-493dd.firebaseapp.com",
@@ -25,20 +28,20 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
+// ---------------- GLOBALS ----------------
 let user = null;
 let currentWeek = 1;
+let weekData = null;
 let chartInstance = null;
 const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-let weekData = null; // store current week data
 
-// ------------------ AUTH ------------------
+// ---------------- AUTH ----------------
 window.googleLogin = async () => {
-  try {
-    await signInWithPopup(auth, provider);
-  } catch(e) { alert(e.message); }
+  try { await signInWithPopup(auth, provider); } 
+  catch(e){ alert(e.message); }
 };
 
-onAuthStateChanged(auth, u => {
+onAuthStateChanged(auth, u=>{
   if(u){
     user = u;
     document.getElementById("auth").style.display="none";
@@ -48,23 +51,35 @@ onAuthStateChanged(auth, u => {
   }
 });
 
-// ------------------ WEEK TABS ------------------
+// ---------------- WEEK TABS ----------------
 function renderWeekTabs(){
-  const w = document.getElementById("weeks");
-  w.innerHTML="";
+  const container = document.getElementById("weeks");
+  container.innerHTML="";
   for(let i=1;i<=4;i++){
-    const b=document.createElement("button");
-    b.textContent="Week "+i;
+    const b = document.createElement("button");
+    b.textContent = "Week " + i;
     if(i===currentWeek) b.classList.add("active");
-    b.onclick=()=>{currentWeek=i; loadWeek(i);}
-    w.appendChild(b);
+    b.onclick = () => { currentWeek=i; loadWeek(i); };
+    container.appendChild(b);
   }
 }
 
-// ------------------ LOAD / SAVE ------------------
+// ---------------- DATA ----------------
+function createEmptyWeek(){
+  return {
+    days: Array.from({length:7},()=>({tasks:[false,false,false]})),
+    habits: Array.from({length:5},()=>Array.from({length:7},()=>false))
+  };
+}
+
+async function saveWeek(){
+  await setDoc(doc(db,"users",user.uid,"weeks","week"+currentWeek), weekData);
+}
+
+// ---------------- LOAD WEEK ----------------
 async function loadWeek(week){
   renderWeekTabs();
-  const ref = doc(db, "users", user.uid, "weeks", "week"+week);
+  const ref = doc(db,"users",user.uid,"weeks","week"+week);
   const snap = await getDoc(ref);
   weekData = snap.exists() ? snap.data() : createEmptyWeek();
   renderDays();
@@ -72,26 +87,15 @@ async function loadWeek(week){
   renderChart();
 }
 
-function createEmptyWeek(){
-  return {
-    days: Array.from({length:7}, ()=>({tasks:[false,false,false]})),
-    habits: Array.from({length:5}, ()=>Array.from({length:7}, ()=>false))
-  };
-}
-
-async function saveWeek(){
-  await setDoc(doc(db, "users", user.uid, "weeks", "week"+currentWeek), weekData);
-}
-
-// ------------------ RENDER ------------------
+// ---------------- RENDER DAYS ----------------
 function renderDays(){
-  const d = document.getElementById("days");
-  d.innerHTML="";
+  const container = document.getElementById("days");
+  container.innerHTML = "";
   weekData.days.forEach((day,i)=>{
-    const div=document.createElement("div");
-    div.className="day";
     const done = day.tasks.filter(t=>t).length;
     const pct = Math.round((done/day.tasks.length)*100);
+    const div = document.createElement("div");
+    div.className = "day";
     div.innerHTML=`
       <b>${days[i]}</b>
       <div class="circle" style="background:conic-gradient(#4caf50 ${pct*3.6}deg,#eee 0deg)">
@@ -99,19 +103,20 @@ function renderDays(){
       </div>
       ${day.tasks.map((t,j)=>`
         <div class="task">
-          <input type="checkbox" ${t?"checked":""} data-day="${i}" data-task="${j}">
+          <input type="checkbox" data-day="${i}" data-task="${j}" ${t?"checked":""}>
           Task ${j+1}
         </div>
       `).join("")}
     `;
-    d.appendChild(div);
+    container.appendChild(div);
   });
 
+  // Attach events
   document.querySelectorAll('.task input').forEach(el=>{
     el.onchange = async e=>{
-      const day = parseInt(e.dataset.day);
-      const task = parseInt(e.dataset.task);
-      weekData.days[day].tasks[task] = e.checked;
+      const day = parseInt(el.dataset.day);
+      const task = parseInt(el.dataset.task);
+      weekData.days[day].tasks[task] = el.checked;
       renderDays();
       renderChart();
       await saveWeek();
@@ -119,31 +124,33 @@ function renderDays(){
   });
 }
 
+// ---------------- RENDER HABITS ----------------
 function renderHabits(){
-  const table=document.getElementById("habits");
-  table.innerHTML="<tr><th>Habit</th>"+days.map(d=>`<th>${d}</th>`).join("")+"</tr>";
+  const table = document.getElementById("habits");
+  table.innerHTML = "<tr><th>Habit</th>"+days.map(d=>`<th>${d}</th>`).join("")+"</tr>";
   weekData.habits.forEach((row,i)=>{
-    let tr="<tr><td>Habit "+(i+1)+"</td>";
+    let tr = "<tr><td>Habit "+(i+1)+"</td>";
     row.forEach((v,j)=>{
-      tr+=`<td><input type="checkbox" data-habit="${i}" data-day="${j}" ${v?"checked":""}></td>`;
+      tr += `<td><input type="checkbox" data-habit="${i}" data-day="${j}" ${v?"checked":""}></td>`;
     });
-    tr+="</tr>";
-    table.innerHTML+=tr;
+    tr += "</tr>";
+    table.innerHTML += tr;
   });
 
   document.querySelectorAll('#habits input').forEach(el=>{
     el.onchange = async e=>{
-      const h = parseInt(e.dataset.habit);
-      const d = parseInt(e.dataset.day);
-      weekData.habits[h][d] = e.checked;
+      const h = parseInt(el.dataset.habit);
+      const d = parseInt(el.dataset.day);
+      weekData.habits[h][d] = el.checked;
       await saveWeek();
-    }
+    };
   });
 }
 
+// ---------------- RENDER CHART ----------------
 function renderChart(){
-  const ctx=document.getElementById("chart");
-  const values=weekData.days.map(d=>Math.round((d.tasks.filter(t=>t).length/3)*100));
+  const ctx = document.getElementById("chart");
+  const values = weekData.days.map(d=>Math.round((d.tasks.filter(t=>t).length/3)*100));
   if(chartInstance) chartInstance.destroy();
   chartInstance = new Chart(ctx,{
     type:'line',
@@ -151,39 +158,40 @@ function renderChart(){
       labels:days,
       datasets:[{label:'Daily Progress %', data:values, borderColor:'#4caf50', fill:false}]
     },
-    options:{responsive:true}
+    options:{responsive:true, maintainAspectRatio:false}
   });
 }
 </script>
 
-<!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <style>
-body { margin:0; font-family: Inter, sans-serif; background:#f4f6f8; }
-.app { max-width:1200px; margin:auto; padding:20px; }
-h1 { text-align:center; }
-button { padding:8px 14px; border:none; border-radius:6px; background:#111; color:white; cursor:pointer; }
-input { padding:6px; border-radius:6px; border:1px solid #ccc; }
-.week-tabs button.active { background:#4CAF50; }
-.grid { display:grid; grid-template-columns:repeat(7,1fr); gap:10px; margin-top:20px; }
-.day { background:white; border-radius:12px; padding:10px; box-shadow:0 2px 6px rgba(0,0,0,.1); }
-.circle { width:80px; height:80px; border-radius:50%; margin:10px auto; display:flex; align-items:center; justify-content:center; font-weight:bold; }
-.task { display:flex; gap:6px; font-size:14px; }
-.habits table { width:100%; border-collapse:collapse; }
-.habits td, .habits th { border:1px solid #ddd; padding:6px; text-align:center; }
+body{margin:0;font-family:Inter,sans-serif;background:#f4f6f8}
+.app{max-width:1200px;margin:auto;padding:20px}
+h1{text-align:center}
+button{padding:8px 14px;border:none;border-radius:6px;background:#111;color:white;cursor:pointer}
+.week-tabs button.active{background:#4CAF50}
+input{padding:6px;border-radius:6px;border:1px solid #ccc}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-top:20px}
+.day{background:white;border-radius:12px;padding:10px;box-shadow:0 2px 6px rgba(0,0,0,.1)}
+.circle{width:80px;height:80px;border-radius:50%;margin:10px auto;display:flex;align-items:center;justify-content:center;font-weight:bold}
+.task{display:flex;gap:6px;font-size:14px}
+.habits table{width:100%;border-collapse:collapse}
+.habits td,.habits th{border:1px solid #ddd;padding:6px;text-align:center}
+canvas{width:100%;height:150px}
 </style>
+
 </head>
 <body>
 <div class="app">
 <h1>Focusifyr</h1>
 <div id="auth">
-  <button onclick="googleLogin()" style="padding:12px 20px; border-radius:8px; background:#4285F4; color:white; border:none; font-size:16px; cursor:pointer;">Sign in with Google</button>
+  <button onclick="googleLogin()" style="padding:12px 20px;border-radius:8px;background:#4285F4;color:white;border:none;font-size:16px;cursor:pointer">
+    Sign in with Google
+  </button>
 </div>
 
 <div id="main" style="display:none">
   <div class="week-tabs" id="weeks"></div>
-  <canvas id="chart" height="120"></canvas>
+  <canvas id="chart"></canvas>
   <div class="grid" id="days"></div>
   <h3>Daily Habits</h3>
   <div class="habits"><table id="habits"></table></div>
